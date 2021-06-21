@@ -1,0 +1,174 @@
+#Importing data and making data as the dataframe and named it unemployment rate raw
+library(readxl)
+data <- read_xlsx(file.choose()) 
+unemployment_rate_raw <- data[, 2]
+# assign name as "unemployment_rate_raw" to the data imported
+
+#Installing the Time Series package
+install.packages("tseries")
+library(tseries)
+
+#Converting the raw data to time series data
+unemployment_rate_ts <- ts(unemployment_rate_raw, start = 1960, frequency = 1)
+# unemployment rate ts(a time series) means unemployment_rate_raw
+
+# check the class of the Time series
+class(unemployment_rate_ts)
+
+#Raw plot of the data (1960 - 2018)
+plot(unemployment_rate_ts, col = 2 ,lwd = 2, xlab = "Years", ylab = "Unemployment rate", main = "Unemployment rate in US")
+abline(reg = lm(unemployment_rate_ts~time(unemployment_rate_ts)), col = 4, lwd = 2)
+
+#Specifying the years used to fit the data using ARIMA
+unemployment_rate_data<- data[1:49, 2]
+unemployment_rate<- ts(unemployment_rate_data, start = 1960, frequency = 1)
+
+#Checking for stationarity of data
+adf.test(unemployment_rate)
+
+
+#1st difference 
+unemployment_rate_diff1 <- diff(unemployment_rate)
+plot(unemployment_rate_diff1, col = 4, lwd = 2, xlab = "Years", ylab = "First Difference", main = "Plot of 1st differenced data")
+abline(reg = lm(unemployment_rate_diff1 ~ time(unemployment_rate_diff1)), col = 1, lwd = 2)
+adf.test(unemployment_rate_diff1)
+
+
+
+#Plotting the PACF to check for order of AR
+pacf(unemployment_rate_diff1, col = 3, lwd = 2, main = "PACF of 1st Differenced data")
+
+
+#Plotting the ACF to check for order of MA
+acf(unemployment_rate_diff1, col = 8, lwd = 2, main = "ACF of 1st Differenced data")
+
+
+
+#Installing the Forecast package
+install.packages("forecast")
+library(forecast)
+
+
+#Un-doing the first difference to obtain forecasts of "unemployment rate", and not the "Changes in unemployment rate"
+unemployment_rate_undiff <- diffinv(unemployment_rate_diff1)
+
+
+#Specifying the various ARIMA models (order of 'p' and 'q' are determined from the PACF & ACF plots respectively)
+model_1 <- arima(unemployment_rate_undiff, order = c(2,1,3))
+model_2 <- arima(unemployment_rate_undiff, order = c(3,1,2))
+
+
+
+#AIC & BIC scores of all the models
+scores_AIC <- AIC(model_1, model_2)
+scores_BIC <- BIC(model_1, model_2)
+aic <- scores_AIC$AIC
+bic <- scores_BIC$BIC
+
+#Comparing the AIC & BIC scores to select the best model
+scores <- data.frame(aic, bic)
+scores
+
+#Residual plots
+#checking white noise condition of the residuals for all the three models
+# Model-1
+pacf(model_1$residuals, col = 3, lwd = 2, xlab = "Lag", ylab = "Partial Autocorrelations of error", main = "Model-1 PACF")
+pacf_1 <- pacf(model_1$residuals, plot = FALSE)
+pacf_1
+pacf_1$lag <- pacf_1$lag
+plot(pacf_1,col = 3, lwd = 2, xlab = "Lag", ylab = "Partial Autocorrelations of error", main = "Model-a PACF" )
+
+
+acf(model_1$residuals, col = 8, lwd = 2, xlab = "Lag", ylab = "Autocorrelations of error", main = "Model-1 ACF")
+acf_1 <- acf(model_1$residuals, plot = FALSE)
+acf_1
+acf_1$lag <- acf_1$lag*12
+plot(acf_1,col = 3, lwd = 2, xlab = "Lag", ylab = "Autocorrelations of error", main = "Model-1 ACF" )
+
+
+adf.test(model_1$residuals)
+plot (model_1$residuals, xlab ="Time", ylab = "Residuals", main = "Residuals of model 1")
+abline(reg = lm(model_1$residuals~time(model_1$residuals)), col = 4, lwd = 2)
+hist(model_1$residuals, col="grey", xlab ="residuals", ylab= "frequency", main = "Residuals of model-1")
+
+# Model 2
+#checking white noise condition of the residuals for all the three models
+pacf(model_2$residuals, col = 3, lwd = 2, xlab = "Lag", ylab = "Partial Autocorrelations of error", main = "Model-2 PACF")
+pacf_2 <- pacf(model_2$residuals, plot = FALSE)
+pacf_2
+pacf_2$lag <- pacf_2$lag
+plot(pacf_2,col = 3, lwd = 2, xlab = "Lag", ylab = "Partial Autocorrelations of error", main = "Model-2 PACF" )
+
+
+acf(model_2$residuals, col = 8, lwd = 2, xlab = "Lag", ylab = "Autocorrelations of error", main = "Model-2 ACF")
+acf_2 <- acf(model_2$residuals, plot = FALSE)
+acf_2
+acf_2$lag <- acf_2$lag
+plot(acf_2,col = 3, lwd = 2, xlab = "Lag", ylab = "Autocorrelations of error", main = "Model-2 ACF" )
+
+
+adf.test(model_2$residuals)
+plot (model_2$residuals, xlab ="Time", ylab = "Residuals", main = "Residuals of model 2")
+abline(reg = lm(model_2$residuals~time(model_2$residuals)), col = 4, lwd = 2)
+hist(model_2$residuals, col="grey", xlab ="residuals", ylab= "frequency", main = "Residuals of model-2")
+
+
+#Forecasting next 10 year values for 'unemployment rate'
+model_1_pred <- forecast(model_1, h = 10, level = c(90, 95))
+
+model_2_pred <- forecast(model_2, h = 10, level = c(90, 95))
+
+# forecasted values 
+model_1_pred
+model_2_pred
+
+#Testing the forecasting
+#comparing with the the actual data(last 10 time-periods) which we have left out earlier
+#Calculating the Error in Forecasting
+actuals <- unemployment_rate_ts[50:59]
+
+#Model_1
+model_1_error <- ((actuals - model_1_pred$mean)/actuals)
+
+#Model_2
+model_2_error <- ((actuals - model_2_pred$mean)/actuals)
+
+mean_error <- c(mean(model_1_error), mean(model_2_error))
+mean_error
+# model 1 and model 2 mean_error
+# [1] 0.9513886 0.8692333
+## Model_1 has the lowest error percentage 
+
+
+#Calculating the Root Mean Squared Error for the forecasted values
+install.packages("Metrics")
+library(Metrics)
+
+#Model_1
+rmse(actuals, model_1_pred$mean)
+
+#Model_2
+rmse(actuals, model_2_pred$mean)
+# model 2 is getting less rmse
+
+## Model_2 has the lowest Rmse
+
+
+#Comparing the plots of the Actuals v/s the Forecasts
+install.packages("ggplot2")
+library(ggplot2)
+
+years <- c(2009:2018)
+
+ggplot() + geom_line(aes(x = years, y = actuals, colour = 'red')) + geom_line(aes(x= years, y = model_1_pred$mean, colour = 'green')) + geom_line(aes(x= years, y = model_2_pred$mean, colour = 'orange'))+ ylab("Unemployment Rates in US") + xlab("Years")
+
+#------ Out of Sample Forecasting
+#Building the Final Forecast Model
+finalfit <- auto.arima(unemployment_rate_undiff, seasonal = TRUE)
+autoplot(finalfit)
+check_res(finalfit)
+
+#Generating the Forecast
+fcastf <- forecast(unemployment_rate_undiff, model = finalfit, h = 4)
+plot_forecast(fcastf)
+summary(fcastf)
